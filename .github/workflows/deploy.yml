@@ -49,37 +49,30 @@ jobs:
           ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
           APP_NAME: "trackwise-app"
         run: |
-          DEPLOYMENT_SCRIPT=$(cat <<'EOF'
-          #!/bin/bash
-
-          sudo yum update -y || true
-
-          if ! command -v docker &> /dev/null; then
-            echo "Docker not found. Installing..."
-            sudo amazon-linux-extras install docker -y
-            sudo systemctl enable docker
-            sudo systemctl start docker
-          fi
-
-          if ! command -v aws &> /dev/null; then
-            echo "AWS CLI not found. Installing..."
-            sudo yum install -y awscli
-          fi
-
-          sudo aws ecr get-login-password --region "${AWS_REGION}" | sudo docker login --username AWS --password-stdin "${ECR_REGISTRY}"
-          sudo docker pull "${IMAGE_URI}"
-
-          sudo docker stop "${APP_NAME}" || true
-          sudo docker rm "${APP_NAME}" || true
-          sudo docker run -d --name "${APP_NAME}" -p 8080:8080 "${IMAGE_URI}"
-
-          echo "Deployment complete."
-          EOF
-          )
-
           aws ssm send-command \
             --instance-ids "$EC2_INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploying a new Docker container" \
-            --parameters commands=["$DEPLOYMENT_SCRIPT"] \
+            --parameters '{
+              "commands": [
+                "#!/bin/bash",
+                "sudo yum update -y || true",
+                "if ! command -v docker &> /dev/null; then",
+                "  echo \"Docker not found. Installing...\"",
+                "  sudo amazon-linux-extras install docker -y",
+                "  sudo systemctl enable docker",
+                "  sudo systemctl start docker",
+                "fi",
+                "if ! command -v aws &> /dev/null; then",
+                "  echo \"AWS CLI not found. Installing...\"",
+                "  sudo yum install -y awscli",
+                "fi",
+                "sudo aws ecr get-login-password --region $AWS_REGION | sudo docker login --username AWS --password-stdin $ECR_REGISTRY",
+                "sudo docker pull $IMAGE_URI",
+                "sudo docker stop $APP_NAME || true",
+                "sudo docker rm $APP_NAME || true",
+                "sudo docker run -d --name $APP_NAME -p 8080:8080 $IMAGE_URI",
+                "echo \"Deployment complete.\""
+              ]
+            }' \
             --region "$AWS_REGION"
