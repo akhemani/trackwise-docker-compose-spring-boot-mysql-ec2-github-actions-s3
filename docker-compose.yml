@@ -4,8 +4,9 @@ services:
   db:
     image: mysql
     container_name: trackwise-mysql-db-container
-    env_file:
-      - .env
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
     ports:
       - "3306:3306"
     volumes:
@@ -21,8 +22,10 @@ services:
       context: .
     image: trackwise-img:1.0
     container_name: trackwise-app
-    env_file:
-      - .env
+    environment:
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
     depends_on:
       db:
         condition: service_healthy
@@ -31,3 +34,4 @@ services:
 
 volumes:
   db_data:
+
