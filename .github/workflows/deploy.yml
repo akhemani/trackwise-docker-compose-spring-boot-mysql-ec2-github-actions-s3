@@ -33,16 +33,16 @@ jobs:
 
     - name: Push image to ECR
       run: |
-        docker push ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:1.0
+        docker push ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPO_NAME }}:1.0
 
     - name: Deploy to EC2 via SSM
       env:
         AWS_REGION: ${{ secrets.AWS_REGION }}
         EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
         ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
-        ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
+        ECR_REPOSITORY: ${{ secrets.ECR_REPO_NAME }}
       run: |
-        IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:1.0"
+        IMAGE_URI="$ECR_REGISTRY/$ECR_REPO_NAME:1.0"
 
         aws ssm send-command \
           --instance-ids "$EC2_INSTANCE_ID" \
