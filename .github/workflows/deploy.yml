@@ -10,63 +10,89 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Log in to Amazon ECR
-      uses: aws-actions/amazon-ecr-login@v2
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
 
-    - name: Show full image URI
-      run: echo "${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPO_NAME }}:1.0"
+      - name: Build and tag Docker image
+        id: docker_build
+        env:
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+          ECR_REPO_NAME: ${{ secrets.ECR_REPO_NAME }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t trackwise-app-mysql:${IMAGE_TAG} .
+          docker tag trackwise-app-mysql:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPO_NAME}:${IMAGE_TAG}
+          echo "IMAGE_URI=${ECR_REGISTRY}/${ECR_REPO_NAME}:${IMAGE_TAG}" >> $GITHUB_ENV
 
-    - name: Build and tag Docker image
-      run: |
-        docker build -t trackwise-app-mysql:1.0 .
-        docker tag trackwise-app-mysql:1.0 ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPO_NAME }}:1.0
+      - name: Push image to ECR
+        run: |
+          docker push ${{ env.IMAGE_URI }}
 
-    - name: Push image to ECR
-      run: |
-        docker push ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPO_NAME }}:1.0
+      - name: Deploy to EC2 via SSM
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          IMAGE_URI: ${{ env.IMAGE_URI }}
+          APP_NAME: "trackwise-app"
+        run: |
+          # The commands to be run on the EC2 instance are passed as a single string.
+          # This ensures that the shell state is maintained and sudo is used where necessary.
+          DEPLOYMENT_SCRIPT='
+            #!/bin/bash
+            
+            # Use sudo for all administrative tasks to ensure permissions
+            echo "Checking for Docker..."
+            if ! command -v docker &> /dev/null; then
+              echo "Docker not found. Installing..."
+              sudo yum update -y
+              sudo amazon-linux-extras install docker -y
+              sudo systemctl enable docker
+              sudo systemctl start docker
+            else
+              echo "Docker is already installed."
+            fi
 
-    - name: Deploy to EC2 via SSM
-      env:
-        AWS_REGION: ${{ secrets.AWS_REGION }}
-        EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
-        ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
-        ECR_REPOSITORY: ${{ secrets.ECR_REPO_NAME }}
-      run: |
-        IMAGE_URI="$ECR_REGISTRY/$ECR_REPO_NAME:1.0"
-
-        aws ssm send-command \
-          --instance-ids "$EC2_INSTANCE_ID" \
-          --document-name "AWS-RunShellScript" \
-          --comment "Install Docker if needed, pull image from ECR, run container" \
-          --parameters 'commands=[
-            "if ! command -v docker &> /dev/null; then",
-            "  echo Installing Docker...",
-            "  yum update -y",
-            "  amazon-linux-extras install docker -y",
-            "  systemctl enable docker",
-            "  systemctl start docker",
-            "  usermod -aG docker ec2-user",
-            "else",
-            "  echo Docker already installed.",
-            "fi",
-            "docker --version",
-            "aws ecr get-login-password --region '$AWS_REGION' | docker login --username AWS --password-stdin '$ECR_REGISTRY'",
-            "docker pull '$IMAGE_URI'",
-            "docker stop trackwise-app || true",
-            "docker rm trackwise-app || true",
-            "docker run -d --name trackwise-app -p 8080:8080 '$IMAGE_URI'"
-          ]' \
-          --region "$AWS_REGION"
+            echo "Checking for AWS CLI..."
+            if ! command -v aws &> /dev/null; then
+              echo "AWS CLI not found. Installing..."
+              sudo yum install -y aws-cli
+            else
+              echo "AWS CLI is already installed."
+            fi
+            
+            echo "Logging in to ECR..."
+            sudo aws ecr get-login-password --region "$AWS_REGION" | sudo docker login --username AWS --password-stdin "$ECR_REGISTRY"
+            
+            echo "Pulling latest image: '$IMAGE_URI'..."
+            sudo docker pull "$IMAGE_URI"
+            
+            echo "Stopping and removing old container if it exists..."
+            sudo docker stop "$APP_NAME" || true
+            sudo docker rm "$APP_NAME" || true
+            
+            echo "Running new container..."
+            sudo docker run -d --name "$APP_NAME" -p 8080:8080 "$IMAGE_URI"
+            
+            echo "Deployment complete."
+          '
+          
+          # Send the entire script as a single command via SSM
+          aws ssm send-command \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploying a new Docker container" \
+            --parameters "commands=$DEPLOYMENT_SCRIPT" \
+            --region "$AWS_REGION"
