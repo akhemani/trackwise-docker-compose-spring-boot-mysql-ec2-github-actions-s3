@@ -16,31 +16,32 @@ jobs:
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
 
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
     - name: Log in to Amazon ECR
-      uses: aws-actions/amazon-ecr-login@v1
+      uses: aws-actions/amazon-ecr-login@v2
 
     - name: Build and tag Docker image
       run: |
         docker build -t trackwise-app-mysql:1.0 .
-        docker tag trackwise-app-mysql:1.0 ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:1.0
+        docker tag trackwise-app-mysql:1.0 ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPO_NAME }}:1.0
 
     - name: Push image to ECR
       run: |
-        docker push ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPO_NAME }}:1.0
+        docker push ${{ secrets.ECR_REGISTRY }}/${{ secrets.ECR_REPOSITORY }}:1.0
 
     - name: Deploy to EC2 via SSM
       env:
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         AWS_REGION: ${{ secrets.AWS_REGION }}
         EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
         ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
         ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY }}
       run: |
-        aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-        aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-        aws configure set region $AWS_REGION
-
         IMAGE_URI="$ECR_REGISTRY/$ECR_REPOSITORY:1.0"
 
         aws ssm send-command \
