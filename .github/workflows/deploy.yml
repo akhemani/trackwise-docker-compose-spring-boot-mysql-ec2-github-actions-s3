@@ -58,6 +58,11 @@ jobs:
                 "#!/bin/bash",
                 "set -euo pipefail",
 
+                "REGION=\"${{ env.AWS_REGION }}\"",
+                "REGISTRY=\"${{ env.ECR_REGISTRY }}\"",
+                "IMAGE=\"${{ env.IMAGE_URI }}\"",
+                "NAME=\"${{ env.APP_NAME }}\"",
+
                 "echo \"✅ Updating apt...\"",
                 "sudo apt-get update -y",
 
@@ -84,19 +89,19 @@ jobs:
                 "fi",
 
                 "echo \"✅ Logging into ECR...\"",
-                "aws ecr get-login-password --region $AWS_REGION | sudo docker login --username AWS --password-stdin $ECR_REGISTRY",
+                "aws ecr get-login-password --region $REGION | sudo docker login --username AWS --password-stdin $REGISTRY",
 
                 "echo \"✅ Pulling Docker image...\"",
-                "sudo docker pull $IMAGE_URI",
+                "sudo docker pull $IMAGE",
 
                 "echo \"✅ Stopping and removing old container if exists...\"",
-                "sudo docker stop $APP_NAME || true",
-                "sudo docker rm $APP_NAME || true",
+                "sudo docker stop $NAME || true",
+                "sudo docker rm $NAME || true",
 
                 "echo \"✅ Running new container...\"",
-                "sudo docker run -d --name $APP_NAME -p 8080:8080 $IMAGE_URI",
+                "sudo docker run -d --name $NAME -p 8080:8080 $IMAGE",
 
                 "echo \"✅ Deployment complete.\""
               ]
             }' \
-            --region "$AWS_REGION"
+            --region "${{ env.AWS_REGION }}"
