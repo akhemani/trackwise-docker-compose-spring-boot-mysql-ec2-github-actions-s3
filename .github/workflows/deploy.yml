@@ -52,31 +52,51 @@ jobs:
           aws ssm send-command \
             --instance-ids "$EC2_INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --comment "Deploying a new Docker container" \
+            --comment "Deploying Docker container to Ubuntu EC2" \
             --parameters '{
               "commands": [
                 "#!/bin/bash",
+                "set -euo pipefail",
+
+                "echo \"✅ Updating apt...\"",
                 "sudo apt-get update -y",
+
+                "echo \"✅ Installing Docker if missing...\"",
                 "if ! command -v docker &> /dev/null; then",
-                "  echo \"Docker not found. Installing...\"",
                 "  sudo apt-get install -y docker.io",
                 "  sudo systemctl enable docker",
                 "  sudo systemctl start docker",
                 "fi",
-                "if ! command -v aws &> /dev/null; then",
-                "  echo \"AWS CLI not found. Installing...\"",
-                "  curl \\\"https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip\\\" -o \\\"awscliv2.zip\\\"",
+
+                "echo \"✅ Installing unzip if missing...\"",
+                "if ! command -v unzip &> /dev/null; then",
                 "  sudo apt-get install -y unzip",
+                "fi",
+
+                "echo \"✅ Installing AWS CLI v2 if missing...\"",
+                "if ! command -v aws &> /dev/null; then",
+                "  curl -s \"https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip\" -o \"awscliv2.zip\"",
                 "  unzip awscliv2.zip",
                 "  sudo ./aws/install",
+                "  export PATH=/usr/local/bin:$PATH",
+                "  aws --version",
                 "  rm -rf awscliv2.zip aws",
                 "fi",
-                "sudo aws ecr get-login-password --region $AWS_REGION | sudo docker login --username AWS --password-stdin $ECR_REGISTRY",
+
+                "echo \"✅ Logging into ECR...\"",
+                "aws ecr get-login-password --region $AWS_REGION | sudo docker login --username AWS --password-stdin $ECR_REGISTRY",
+
+                "echo \"✅ Pulling Docker image...\"",
                 "sudo docker pull $IMAGE_URI",
+
+                "echo \"✅ Stopping and removing old container if exists...\"",
                 "sudo docker stop $APP_NAME || true",
                 "sudo docker rm $APP_NAME || true",
+
+                "echo \"✅ Running new container...\"",
                 "sudo docker run -d --name $APP_NAME -p 8080:8080 $IMAGE_URI",
-                "echo \"Deployment complete.\""
+
+                "echo \"✅ Deployment complete.\""
               ]
             }' \
             --region "$AWS_REGION"
