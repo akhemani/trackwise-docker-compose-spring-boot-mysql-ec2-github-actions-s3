@@ -24,11 +24,16 @@ jobs:
       run: |
         docker save trackwise-app-mysql:1.0 -o app.tar
 
-    - name: Install AWS CLI (v2)
+    - name: Ensure AWS CLI is installed
       run: |
-        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-        unzip awscliv2.zip
-        sudo ./aws/install
+        if ! command -v aws &> /dev/null; then
+          echo "AWS CLI not found. Installing..."
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install
+        else
+          echo "✅ AWS CLI already installed: $(aws --version)"
+        fi
 
     - name: Verify AWS CLI installation
       run: aws --version
