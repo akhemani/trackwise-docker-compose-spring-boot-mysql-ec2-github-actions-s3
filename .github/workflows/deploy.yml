@@ -24,10 +24,14 @@ jobs:
       run: |
         docker save trackwise-app-mysql:1.0 -o app.tar
 
-    - name: Install AWS CLI
+    - name: Install AWS CLI (v2)
       run: |
-        sudo apt-get update
-        sudo apt-get install -y awscli
+        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+        unzip awscliv2.zip
+        sudo ./aws/install
+
+    - name: Verify AWS CLI installation
+      run: aws --version
 
     - name: Upload image to S3
       env:
